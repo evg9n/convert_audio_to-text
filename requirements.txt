@@ -1,2 +1,4 @@
 loguru
 python-dotenv
+requests
+rev_ai

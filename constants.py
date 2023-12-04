@@ -7,7 +7,8 @@ class Constants:
 
     def __init__(self):
         load_dotenv(path.abspath(path.join('env', '.env')))
-
+        load_dotenv(path.abspath(path.join('env', 'logger.env')))
+        self.REV_TOKEN = environ.get('REV_TOKEN')
         self.FORMAT_LOGGER = environ.get('FORMAT_LOGGER')
         self.LEVEL_FILE_LOGGER = environ.get('LEVEL_FILE_LOGGER')
         self.LEVEL_CONSOLE_LOGGER = environ.get('LEVEL_CONSOLE_LOGGER')
