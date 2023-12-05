@@ -4,7 +4,8 @@ from time import time, sleep
 
 from loguru import logger
 from requests import get, post
-from rev_ai import apiclient, JobStatus
+from rev_ai import JobStatus
+from rev_ai.apiclient import RevAiAPIClient
 
 from os.path import abspath, join
 # Константы
@@ -27,45 +28,6 @@ logger.add(
     level=constants.LEVEL_CONSOLE_LOGGER,
     format=constants.FORMAT_LOGGER,
 )
-
-
-def check(job_id: str):
-    url = f"https://api.rev.ai/speechtotext/v1/jobs/{job_id}/transcript"
-    headers = {
-        "Authorization": f"Bearer {constants.REV_TOKEN}",  # Замените <REVAI_ACCESS_TOKEN> на ваш токен доступа
-        "Accept": "text/plain"
-    }
-    response = get(url, headers=headers)
-    return response
-
-
-def send_file():
-    url = "https://api.rev.ai/speechtotext/v1/jobs"
-    headers = {
-        "Authorization": f"Bearer {constants.REV_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "source_config": {"url": "https://www.rev.ai/FTC_Sample_1.mp3"},
-        "metadata": "This is a test"
-    }
-
-    response = post(url, headers=headers, json=data)
-    # print(response)
-    # print(response.text)
-    return response
-
-
-def get_result(job_id: str):
-    url = f"https://api.rev.ai/speechtotext/v1/jobs/{job_id}/transcript"
-    headers = {
-        "Authorization": f"Bearer {constants.REV_TOKEN}",  # Замените <REVAI_ACCESS_TOKEN> на ваш токен доступа
-        "Accept": "text/plain"
-    }
-
-    response = get(url, headers=headers)
-    # print(response.text)
-    return response
 
 
 def decorator_time_work(func):
@@ -93,26 +55,33 @@ def decorator_time_work(func):
     return wrapper
 
 
-def send(path_file: str):
-    # create your client
-    client = apiclient.RevAiAPIClient(constants.REV_TOKEN)
+def send(client: RevAiAPIClient, path_file: str, language: str) -> str | None:
 
-    # send a local file
-    job = client.submit_job_local_file(path_file, language='ru')
-    # logger.debug(job)
+    # отправка локального файла
+    job = client.submit_job_local_file(path_file, language=language)
+    job_id = job.id
+    logger.debug(f'{path_file} отправлен на обработку. id задачи {job_id}')
 
-    sleep(30)
+    return job_id
+
+
+def check_status(client: RevAiAPIClient, job_id: str) -> str | None:
     while True:
         # проверить статус задания
-        job_details = client.get_job_details(job.id)
-        # logger.info(job_details.failure_detail())
+        job_details = client.get_job_details(job_id)
+        logger.debug(f"{job_details.status}")
+
         if job_details.status == JobStatus.TRANSCRIBED:
             # получить расшифровку в виде текста
-            transcript_text = client.get_transcript_text(job.id)
+            transcript_text = client.get_transcript_text(job_id)
+            logger.info(f'{job_id} - Готово')
             return transcript_text
+
         elif job_details.status == JobStatus.IN_PROGRESS:
+            logger.debug(f'{job_id} Еще ждем')
             sleep(10)
             continue
+
         else:
             logger.error(f'{job_details}')
             logger.error('Не удалось')
@@ -122,7 +91,10 @@ def send(path_file: str):
 
 @decorator_time_work
 def main():
-    list_file = listdir(path.abspath('media'))
+    # создание клиента
+    client = RevAiAPIClient(constants.REV_TOKEN)
+    path_get = path.abspath('media')
+    list_file = listdir(path_get)
     list_results = listdir(path.abspath('results'))
     path_save = path.abspath('results')
     for file in list_file:
@@ -130,10 +102,11 @@ def main():
                 file.replace('.ogg', '.txt') in list_results or
                 file.replace('.mp4', '.txt') in list_results):
             continue
-        path_file = path.abspath(path.join('results', file))
-        result = send(path_file)
+        path_file = path.join(path_get, file)
+        job_id = send(client, path_file, 'ru')
+        result = check_status(client, job_id)
         if result:
-            with open(path.join(path_save, path_file.replace(file[-4:], '.txt')), 'w',
+            with open(path.join(path_save, file[:-4] + ".txt"), 'w',
                       encoding='utf-8') as f:
                 f.write(result)
         else:
